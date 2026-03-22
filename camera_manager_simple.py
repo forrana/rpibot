@@ -2,6 +2,7 @@
 """
 Simple camera manager using only picamera2 library.
 No ffmpeg dependency, direct UDP streaming.
+Includes process cleanup to avoid "camera in use" errors.
 """
 
 import subprocess
@@ -71,6 +72,22 @@ class CameraManagerSimple:
     def _try_camera_initialization(self):
         """Try different approaches to initialize the camera"""
         import os
+        import subprocess
+        import time
+
+        # First, try to kill any existing camera processes that might be holding the camera
+        try:
+            print("Cleaning up any existing camera processes...")
+            subprocess.run(['pkill', '-f', 'libcamera'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['pkill', '-f', 'rpicam'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['pkill', '-f', 'picamera2'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)  # Give processes time to terminate
+            print("Process cleanup completed")
+        except Exception as cleanup_error:
+            print(f"Process cleanup warning: {cleanup_error}")
 
         # Try without setting any target first
         try:
@@ -203,7 +220,7 @@ class CameraManagerSimple:
 
 # Test the simple camera manager
 if __name__ == "__main__":
-    print("Testing simple picamera2 manager...")
+    print("Testing simple picamera2 manager with process cleanup...")
     cm = CameraManagerSimple()
     print("Camera status:", cm.get_status())
 

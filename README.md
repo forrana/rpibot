@@ -74,8 +74,8 @@ Then open your browser to: `http://localhost:5000`
   sudo raspi-config
   # Then go to Interface Options -> Camera -> Enable
   
-  # Test camera directly
-  libcamera-hello --timeout 5000
+  # Test camera directly (use rpicam-hello on Bookworm, libcamera-hello on older versions)
+  rpicam-hello --timeout 5000 || libcamera-hello --timeout 5000
   
   # If you still have issues, try setting the target explicitly
   export LIBCAMERA_RPI_TARGET=bcm2835  # or pisp

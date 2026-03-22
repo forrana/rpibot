@@ -28,7 +28,23 @@ templates = Jinja2Templates(directory="templates")
 
 # Initialize managers
 serial_manager = SerialManager()
-camera_manager = CameraManager()
+
+# Try the direct camera manager first (bypasses picamera2 issues)
+try:
+    from camera_manager_rpi_direct import CameraManagerDirect
+    camera_manager = CameraManagerDirect()
+    print("Using direct Raspberry Pi camera manager")
+
+    # If direct manager fails, fall back to regular manager
+    if not camera_manager.available:
+        print("Direct camera manager failed, trying regular manager...")
+        from camera_manager import CameraManager
+        camera_manager = CameraManager()
+
+except ImportError:
+    print("Direct camera manager not available, using regular manager")
+    from camera_manager import CameraManager
+    camera_manager = CameraManager()
 
 @app.get('/', response_class=HTMLResponse)
 async def index(request: Request):

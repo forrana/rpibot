@@ -3,33 +3,25 @@ import platform
 import io
 import threading
 import time
+import os
+import signal
 
 try:
-    # Try picamera2 first (for Raspberry Pi Camera Module 3 and newer systems)
-    try:
-        from picamera2 import Picamera2
-        PICAMERA2_AVAILABLE = True
-        PICAMERA_AVAILABLE = False
-        print("Using picamera2 library")
-    except ImportError:
-        # Fallback to picamera for older systems
-        from picamera import PiCamera
-        from picamera.array import PiRGBArray
-        PICAMERA2_AVAILABLE = False
-        PICAMERA_AVAILABLE = True
-        print("Using picamera library")
+    from picamera2 import Picamera2
+    PICAMERA2_AVAILABLE = True
+    print("Using picamera2 library")
 except ImportError:
     PICAMERA2_AVAILABLE = False
-    PICAMERA_AVAILABLE = False
-    print("No camera library available")
+    print("picamera2 library not available")
 
 class CameraManager:
     def __init__(self):
         self.available = False
         self.error = None
         self.camera = None
-        self.stream = None
+        self.stream_process = None
         self.streaming = False
+        self.stream_port = 8000
         self.check_camera()
 
     def check_camera(self):
@@ -41,25 +33,33 @@ class CameraManager:
                 if 'raspberry pi' in model.lower():
                     print("Raspberry Pi detected")
 
-                    # Check if any camera library is available
-                    if not (PICAMERA2_AVAILABLE or PICAMERA_AVAILABLE):
+                    # Check if picamera2 is available
+                    if not PICAMERA2_AVAILABLE:
                         self.available = False
-                        self.error = "No camera library available (picamera or picamera2)"
-                        print("No camera library available")
+                        self.error = "picamera2 library not available"
+                        print("picamera2 library not available")
                         return
 
-                    # Try to initialize camera based on available library
+                    # Check if ffmpeg is available
                     try:
-                        if PICAMERA2_AVAILABLE:
-                            test_camera = Picamera2()
-                            config = test_camera.create_video_configuration()
-                            test_camera.configure(config)
-                            test_camera.start()
-                            test_camera.stop()
-                            test_camera.close()
-                        else:  # PICAMERA_AVAILABLE
-                            test_camera = PiCamera()
-                            test_camera.close()
+                        subprocess.run(['ffmpeg', '-version'],
+                                     stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL,
+                                     check=True)
+                    except (subprocess.CalledProcessError, FileNotFoundError):
+                        self.available = False
+                        self.error = "ffmpeg not installed"
+                        print("ffmpeg not installed")
+                        return
+
+                    # Try to initialize camera
+                    try:
+                        test_camera = Picamera2()
+                        config = test_camera.create_video_configuration()
+                        test_camera.configure(config)
+                        test_camera.start()
+                        test_camera.stop()
+                        test_camera.close()
 
                         self.available = True
                         self.error = None
@@ -81,11 +81,12 @@ class CameraManager:
         return {
             "available": self.available,
             "error": self.error,
-            "streaming": self.streaming
+            "streaming": self.streaming,
+            "stream_url": f"http://localhost:{self.stream_port}/stream.mjpg" if self.streaming else None
         }
 
     def start_video_stream(self):
-        """Start video streaming from Raspberry Pi camera"""
+        """Start video streaming using ffmpeg"""
         if not self.available:
             return None, "Camera not available"
 
@@ -93,113 +94,68 @@ class CameraManager:
             return None, "Camera already streaming"
 
         try:
-            if PICAMERA2_AVAILABLE:
-                return self._start_picamera2_stream()
-            else:  # PICAMERA_AVAILABLE
-                return self._start_picamera_stream()
+            # Start ffmpeg process to capture from camera and stream as MJPEG
+            cmd = [
+                'ffmpeg',
+                '-f', 'v4l2',
+                '-input_format', 'h264',
+                '-video_size', '640x480',
+                '-framerate', '15',
+                '-i', '/dev/video0',
+                '-c:v', 'copy',
+                '-f', 'mpegts',
+                '-codec:v', 'mpeg1video',
+                '-b:v', '800k',
+                '-bf', '0',
+                '-r', '15',
+                '-f', 'mpegts',
+                'udp://localhost:1234'
+            ]
 
-        except Exception as e:
-            self.stop_video_stream()
-            self.available = False
-            self.error = f"Camera stream error: {str(e)}"
-            return None, f"Camera stream error: {str(e)}"
-
-    def _start_picamera2_stream(self):
-        """Start video stream using picamera2"""
-        try:
-            from picamera2 import Picamera2
-            import cv2
-            import numpy as np
-
-            # Initialize camera
-            self.camera = Picamera2()
-            config = self.camera.create_video_configuration(
-                main={"format": 'XRGB8888', "size": (640, 480)},
-                controls={"FrameRate": 15}  # Reduced framerate for stability
+            self.stream_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                preexec_fn=os.setsid
             )
-            self.camera.configure(config)
-            self.camera.start()
 
-            # Give camera time to warm up
-            time.sleep(2)
+            # Give ffmpeg time to start
+            time.sleep(3)
+
+            # Check if process is still running
+            if self.stream_process.poll() is not None:
+                error = self.stream_process.stderr.read().decode()
+                self.stop_video_stream()
+                return None, f"ffmpeg failed to start: {error}"
 
             self.streaming = True
-
-            def capture_frames():
-                while self.streaming:
-                    try:
-                        # Get frame from camera
-                        im = self.camera.capture_array()
-
-                        # Convert to JPEG with quality control
-                        _, jpeg = cv2.imencode('.jpg', cv2.cvtColor(im, cv2.COLOR_RGB2BGR), [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-
-                        yield jpeg.tobytes()
-
-                        # Small delay to control frame rate
-                        time.sleep(0.05)
-                    except Exception as e:
-                        print(f"Frame capture error: {e}")
-                        break
-
-            return capture_frames(), None
-
-        except ImportError as e:
-            return None, f"Required libraries not available: {str(e)}"
-        except Exception as e:
-            self.stop_video_stream()
-            return None, f"picamera2 stream error: {str(e)}"
-
-    def _start_picamera_stream(self):
-        """Start video stream using picamera (legacy)"""
-        try:
-            from picamera import PiCamera
-
-            # Initialize camera
-            self.camera = PiCamera()
-            self.camera.resolution = (640, 480)
-            self.camera.framerate = 30
-
-            # Create stream
-            self.stream = io.BytesIO()
-            self.streaming = True
-
-            # Start capturing frames
-            def capture_frames():
-                for frame in self.camera.capture_continuous(self.stream, 'jpeg', use_video_port=True):
-                    # Return the current frame
-                    self.stream.seek(0)
-                    yield self.stream.read()
-
-                    # Reset stream for next frame
-                    self.stream.seek(0)
-                    self.stream.truncate()
-
-                    # Exit if streaming stopped
-                    if not self.streaming:
-                        break
-
-            return capture_frames(), None
+            return None, "Stream started successfully"
 
         except Exception as e:
             self.stop_video_stream()
-            return None, f"picamera stream error: {str(e)}"
+            return None, f"Failed to start stream: {str(e)}"
 
     def stop_video_stream(self):
         """Stop the video stream"""
+        if not self.streaming:
+            return
+
         self.streaming = False
-        if self.camera:
+
+        if self.stream_process:
             try:
-                if PICAMERA2_AVAILABLE:
-                    self.camera.stop()
-                self.camera.close()
-                self.camera = None
-            except:
+                # Terminate the process group
+                os.killpg(os.getpgid(self.stream_process.pid), signal.SIGTERM)
+                self.stream_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(self.stream_process.pid), signal.SIGKILL)
+            except ProcessLookupError:
                 pass
-        if self.stream:
-            try:
-                self.stream.close()
-                self.stream = None
-            except:
-                pass
+            finally:
+                self.stream_process = None
+
         print("Camera stream stopped")
+
+    def __del__(self):
+        """Cleanup on object destruction"""
+        self.stop_video_stream()

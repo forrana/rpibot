@@ -220,30 +220,33 @@ document.addEventListener('DOMContentLoaded', function() {
 
         cameraStatus.textContent = 'Starting camera...';
         cameraStatus.classList.remove('available', 'unavailable');
-        videoContainer.style.display = 'block';
 
-        // Set up video feed for MJPEG stream
-        videoFeed.src = '/video_feed';
-        videoFeed.autoplay = true;
-        videoFeed.controls = false;
+        fetch('/video_feed')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Set up video feed with ffmpeg stream
+                videoContainer.style.display = 'block';
+                videoFeed.src = data.stream_url;
+                videoFeed.autoplay = true;
+                videoFeed.controls = false;
+                videoFeed.load();
 
-        // Add event listeners
-        videoFeed.onloadeddata = function() {
-            cameraStatus.textContent = 'Camera streaming';
-            cameraStatus.classList.add('available');
-            cameraStatus.classList.remove('unavailable');
-        };
-
-        videoFeed.onerror = function() {
+                cameraStatus.textContent = 'Camera streaming';
+                cameraStatus.classList.add('available');
+                cameraStatus.classList.remove('unavailable');
+            } else {
+                throw new Error(data.error || 'Failed to start stream');
+            }
+        })
+        .catch(error => {
+            console.error('Error starting video stream:', error);
             cameraStatus.textContent = 'Camera stream error';
             cameraStatus.classList.add('unavailable');
             cameraStatus.classList.remove('available');
-            cameraError.textContent = 'Failed to load video stream';
+            cameraError.textContent = `Error: ${error.message}`;
             cameraError.style.display = 'block';
-        };
-
-        // Force reload if needed
-        videoFeed.load();
+        });
     }
 
     // Stop video stream

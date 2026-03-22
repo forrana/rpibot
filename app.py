@@ -77,30 +77,22 @@ async def get_camera_status():
 
 @app.get('/video_feed')
 async def video_feed():
-    """Stream video from Raspberry Pi camera"""
+    """Get video stream URL"""
     if not camera_manager.available:
         return JSONResponse({"error": "Camera not available"}, status_code=404)
 
-    frame_generator, error = camera_manager.start_video_stream()
+    # Start the stream
+    _, error = camera_manager.start_video_stream()
 
     if error:
         return JSONResponse({"error": error}, status_code=500)
 
-    if not frame_generator:
-        return JSONResponse({"error": "Failed to start video stream"}, status_code=500)
-
-    def generate():
-        try:
-            for frame in frame_generator:
-                yield b'--frame\r\n'
-                yield b'Content-Type: image/jpeg\r\n\r\n'
-                yield frame
-                yield b'\r\n'
-        except Exception as e:
-            print(f"Streaming error: {e}")
-            camera_manager.stop_video_stream()
-
-    return StreamingResponse(generate(), media_type='multipart/x-mixed-replace; boundary=frame')
+    # Return the stream URL
+    status = camera_manager.get_status()
+    return JSONResponse({
+        "status": "success",
+        "stream_url": status["stream_url"]
+    })
 
 @app.post('/stop_video')
 async def stop_video():

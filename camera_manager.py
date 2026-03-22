@@ -27,51 +27,115 @@ class CameraManager:
     def check_camera(self):
         """Check if we're on Raspberry Pi and if camera is available"""
         try:
-            # Check if we're on Raspberry Pi
-            with open('/proc/device-tree/model', 'r') as f:
-                model = f.read()
-                if 'raspberry pi' in model.lower():
-                    print("Raspberry Pi detected")
+            # Check if we're on Raspberry Pi by checking for device tree
+            try:
+                with open('/proc/device-tree/model', 'r') as f:
+                    model = f.read()
+                    if 'raspberry pi' in model.lower():
+                        print("Raspberry Pi detected")
+                        is_rpi = True
+                    else:
+                        is_rpi = False
+            except FileNotFoundError:
+                # Not on Raspberry Pi (no device tree)
+                is_rpi = False
+            except Exception as e:
+                print(f"Platform detection warning: {e}")
+                is_rpi = False
 
-                    # Check if picamera2 is available
-                    if not PICAMERA2_AVAILABLE:
-                        self.available = False
-                        self.error = "picamera2 library not available"
-                        print("picamera2 library not available")
-                        return
+            if is_rpi:
+                # Check if picamera2 is available
+                if not PICAMERA2_AVAILABLE:
+                    self.available = False
+                    self.error = "picamera2 library not available"
+                    print("picamera2 library not available")
+                    return
 
-                    # Check if ffmpeg is available
+                # Check if ffmpeg is available
+                try:
+                    subprocess.run(['ffmpeg', '-version'],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL,
+                                 check=True)
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    self.available = False
+                    self.error = "ffmpeg not installed"
+                    print("ffmpeg not installed")
+                    return
+
+                # Try to initialize camera with different targets
+                import os
+
+                # For Raspberry Pi 5 with imx708 camera, try specific targets first
+                try:
+                    with open('/proc/device-tree/model', 'r') as f:
+                        model = f.read()
+                        if 'Raspberry Pi 5' in model or 'BCM2712' in model:
+                            # Raspberry Pi 5 specific order - try bcm2835 first
+                            targets_to_try = ['bcm2835', 'pisp']
+                        else:
+                            targets_to_try = ['pisp', 'bcm2835']
+                except:
+                    targets_to_try = ['pisp', 'bcm2835']
+
+                last_error = None
+
+                for target in targets_to_try:
                     try:
-                        subprocess.run(['ffmpeg', '-version'],
-                                     stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL,
-                                     check=True)
-                    except (subprocess.CalledProcessError, FileNotFoundError):
-                        self.available = False
-                        self.error = "ffmpeg not installed"
-                        print("ffmpeg not installed")
-                        return
+                        print(f"Trying camera initialization with {target} target...")
+                        os.environ['LIBCAMERA_RPI_TARGET'] = target
 
-                    # Try to initialize camera
-                    try:
                         test_camera = Picamera2()
-                        config = test_camera.create_video_configuration()
-                        test_camera.configure(config)
+
+                        # Try different configuration approaches
+                        config = None
+                        try:
+                            # Try standard configuration first
+                            config = test_camera.create_video_configuration()
+                            test_camera.configure(config)
+                        except Exception as config_error:
+                            print(f"Standard configuration failed: {config_error}, trying alternative...")
+                            try:
+                                # Try with explicit parameters
+                                config = test_camera.create_video_configuration(
+                                    main={"format": "XRGB8888", "size": (640, 480)},
+                                    controls={"FrameRate": 30.0}
+                                )
+                                test_camera.configure(config)
+                            except Exception as config_error2:
+                                print(f"Explicit configuration failed: {config_error2}, trying minimal...")
+                                try:
+                                    # Try minimal configuration
+                                    config = test_camera.create_video_configuration(
+                                        main={"size": (640, 480)}
+                                    )
+                                    # Use basic configure without transform
+                                    test_camera.configure(config, queue=False)
+                                except Exception as config_error3:
+                                    print(f"Minimal configuration also failed: {config_error3}")
+                                    raise Exception(f"All configuration methods failed: {config_error}, {config_error2}, {config_error3}")
+
                         test_camera.start()
                         test_camera.stop()
                         test_camera.close()
 
                         self.available = True
                         self.error = None
-                        print("Camera detected and enabled")
+                        print(f"Camera detected and enabled with {target} target")
+                        return
                     except Exception as e:
-                        self.available = False
-                        self.error = f"Camera initialization failed: {str(e)}"
-                        print(f"Camera initialization failed: {e}")
-                else:
-                    self.available = False
-                    self.error = "Not running on Raspberry Pi"
-                    print("Not running on Raspberry Pi")
+                        print(f"Camera initialization failed with {target} target: {e}")
+                        last_error = e
+                        continue
+
+                # If we get here, all targets failed
+                self.available = False
+                self.error = f"Camera initialization failed with all targets: {last_error}"
+                print(f"Camera initialization failed with all targets")
+            else:
+                self.available = False
+                self.error = "Not running on Raspberry Pi"
+                print("Not running on Raspberry Pi")
         except Exception as e:
             self.available = False
             self.error = f"Platform detection failed: {str(e)}"

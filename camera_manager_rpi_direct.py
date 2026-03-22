@@ -131,23 +131,25 @@ class CameraManagerDirect:
             return None, "Camera already streaming"
 
         try:
-            # Start the detected camera command to capture from camera
-            # Use shell=True to handle stdout redirection properly
+            # Start the detected camera command to capture raw video
+            # Use raw output and let ffmpeg handle the encoding
             camera_cmd_str = (
-                f"{self.camera_cmd} -t 0 --codec h264 --width 640 --height 480 "
-                f"--framerate 30 --nopreview"
+                f"{self.camera_cmd} -t 0 --width 640 --height 480 "
+                f"--framerate 30 --nopreview --raw"
             )
 
-            # Start ffmpeg to convert to MJPEG and serve via UDP
+            # Start ffmpeg to encode and serve via UDP
             ffmpeg_cmd = [
                 'ffmpeg',
-                '-f', 'h264',  # Specify input format as H.264
+                '-f', 'rawvideo',  # Raw video input
+                '-pixel_format', 'yuv420p',  # Common pixel format
+                '-video_size', '640x480',  # Match camera resolution
+                '-framerate', '30',  # Match camera framerate
                 '-i', 'pipe:',  # Input from pipe
-                '-analyzeduration', '1000000',  # Increase analysis duration
-                '-probesize', '1000000',  # Increase probe size
-                '-c:v', 'copy',  # Copy the H.264 stream directly
+                '-c:v', 'libx264',  # Encode with x264
+                '-preset', 'ultrafast',  # Low latency
+                '-tune', 'zerolatency',  # Minimize latency
                 '-f', 'mpegts',
-                '-mpegts_service_type', 'digital_tv',
                 f'udp://localhost:{self.stream_port}'
             ]
 

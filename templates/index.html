@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Controller</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Device Controller</h1>
+            <div class="version-info">v{{ version }}</div>
+        </div>
+        
+        <div class="camera-section" id="cameraSection" style="display: none; margin-bottom: 2rem;">
+            <h3>Camera Feed</h3>
+            <div class="camera-status" id="cameraStatus">Checking camera...</div>
+            <div class="video-container" id="videoContainer" style="display: none;">
+                <video id="videoFeed" width="640" height="480" autoplay controls></video>
+            </div>
+            <button id="startCameraBtn" class="camera-btn" style="display: none;">Start Camera</button>
+            <div class="camera-error" id="cameraError" style="display: none;"></div>
+        </div>
+        
+        <div class="controls">
+            <button class="arrow up" data-command="W">↑</button>
+            <div class="middle-row">
+                <button class="arrow left" data-command="A">←</button>
+                <button class="stop" data-command="X">STOP</button>
+                <button class="arrow right" data-command="D">→</button>
+            </div>
+            <button class="arrow down" data-command="S">↓</button>
+        </div>
+        
+        <div class="power-control">
+            <button class="power" data-command="1" id="powerBtn">ON</button>
+        </div>
+        
+        <div class="status">
+            <p id="statusText">Connecting to device...</p>
+        </div>
+        <div class="connection-control" id="connectionControl" style="display: none;">
+            <button id="retryBtn" class="retry">Retry Connection</button>
+        </div>
+        
+        <div class="keyboard-hint">
+            <p>Keyboard controls: W(↑) A(←) S(↓) D(→) X(STOP)</p>
+        </div>
+    </div>
+    
+    <script src="/static/script.js"></script>
+</body>
+</html>

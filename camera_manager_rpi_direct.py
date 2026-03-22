@@ -81,14 +81,12 @@ class CameraManagerDirect:
             # Test camera with the detected command
             try:
                 # Use a temporary file instead of /dev/null to avoid format issues
-                test_cmd = [camera_cmd, '-t', '1000',
-                           '--nopreview', '--codec', 'h264',
-                           '--width', '640', '--height', '480',
-                           '--framerate', '30', '-o', 'test.h264']
+                test_cmd = f"{camera_cmd} -t 1000 --nopreview --codec h264 --width 640 --height 480 --framerate 30 -o test.h264"
                 result = subprocess.run(test_cmd,
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE,
-                                     timeout=5)
+                                     timeout=5,
+                                     shell=True)
 
                 # Clean up test file
                 if os.path.exists('test.h264'):
@@ -134,17 +132,11 @@ class CameraManagerDirect:
 
         try:
             # Start the detected camera command to capture from camera
-            # Use -t 0 for continuous capture and output to stdout
-            camera_cmd_list = [
-                self.camera_cmd,
-                '-t', '0',  # Continuous capture
-                '--codec', 'h264',
-                '--width', '640',
-                '--height', '480',
-                '--framerate', '30',
-                '--nopreview',
-                '-o', '-'  # Output to stdout
-            ]
+            # Use shell=True to handle stdout redirection properly
+            camera_cmd_str = (
+                f"{self.camera_cmd} -t 0 --codec h264 --width 640 --height 480 "
+                f"--framerate 30 --nopreview"
+            )
 
             # Start ffmpeg to convert to MJPEG and serve via UDP
             ffmpeg_cmd = [
@@ -159,9 +151,12 @@ class CameraManagerDirect:
                 f'udp://localhost:{self.stream_port}'
             ]
 
-            # Create pipe between camera command and ffmpeg
-            self.camera_process = subprocess.Popen(camera_cmd_list, stdout=subprocess.PIPE)
-            self.stream_process = subprocess.Popen(ffmpeg_cmd, stdin=self.camera_process.stdout)
+            # Use shell=True for proper stdout handling
+            self.camera_process = subprocess.Popen(camera_cmd_str,
+                                                stdout=subprocess.PIPE,
+                                                shell=True)
+            self.stream_process = subprocess.Popen(ffmpeg_cmd,
+                                                stdin=self.camera_process.stdout)
 
             # Give processes time to start
             time.sleep(3)

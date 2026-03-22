@@ -65,17 +65,27 @@ Then open your browser to: `http://localhost:5000`
 - Automatically detected on Raspberry Pi
 - Stream resolution: 640x480 @ 30fps
 - Uses H.264 encoding
-- **Troubleshooting**: If you get "Unexpected target reported" errors on Arch Linux or other non-Raspberry Pi OS distributions, the application will automatically try both `pisp` and `bcm2835` targets. You can also manually set the environment variable:
+- **Troubleshooting**: If you get "Unexpected target reported" errors, the application will automatically try different configuration approaches and target settings. For Raspberry Pi OS, you can also try:
   ```bash
-  export LIBCAMERA_RPI_TARGET=pisp  # or bcm2835
+  # Update your system
+  sudo apt update && sudo apt upgrade
+  
+  # Enable camera interface
+  sudo raspi-config
+  # Then go to Interface Options -> Camera -> Enable
+  
+  # Test camera directly
+  libcamera-hello --timeout 5000
+  
+  # If you still have issues, try setting the target explicitly
+  export LIBCAMERA_RPI_TARGET=bcm2835  # or pisp
   ```
 
-  **For Raspberry Pi 5 users**: If you encounter camera initialization errors, you may need to:
-  1. Update your system packages: `sudo pacman -Syu`
-  2. Ensure you have the latest libcamera: `sudo pacman -S libcamera libcamera-ipa`
-  3. Check camera detection: `libcamera-hello --list-cameras`
+  **For Raspberry Pi 5 users**: The application automatically detects Raspberry Pi 5 and tries the appropriate target first. If you encounter issues:
+  1. Ensure your system is up to date: `sudo apt update && sudo apt upgrade`
+  2. Check camera detection: `vcgencmd get_camera`
+  3. Test with: `libcamera-hello --timeout 5000`
   4. Try running with debug: `LIBCAMERA_LOG_LEVELS=*:DEBUG python3 app.py`
-  5. If using Arch Linux, consider installing raspberrypi-firmware: `sudo pacman -S raspberrypi-firmware`
 
 ## Project Structure
 

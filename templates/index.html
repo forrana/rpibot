@@ -12,7 +12,7 @@
             <h1>Device Controller</h1>
             <div class="version-info">v{{ version }}</div>
         </div>
-        
+
         <div class="camera-section" id="cameraSection" style="display: none; margin-bottom: 2rem;">
             <h3>Camera Feed</h3>
             <div class="camera-status" id="cameraStatus">Checking camera...</div>
@@ -22,7 +22,7 @@
             <button id="startCameraBtn" class="camera-btn" style="display: none;">Start Camera</button>
             <div class="camera-error" id="cameraError" style="display: none;"></div>
         </div>
-        
+
         <div class="controls">
             <button class="arrow up" data-command="W">↑</button>
             <div class="middle-row">
@@ -32,23 +32,23 @@
             </div>
             <button class="arrow down" data-command="S">↓</button>
         </div>
-        
+
         <div class="power-control">
             <button class="power" data-command="1" id="powerBtn">ON</button>
         </div>
-        
+
         <div class="status">
             <p id="statusText">Connecting to device...</p>
         </div>
         <div class="connection-control" id="connectionControl" style="display: none;">
             <button id="retryBtn" class="retry">Retry Connection</button>
         </div>
-        
+
         <div class="keyboard-hint">
             <p>Keyboard controls: W(↑) A(←) S(↓) D(→) X(STOP)</p>
         </div>
     </div>
-    
+
     <script src="/static/script.js"></script>
 </body>
 </html>

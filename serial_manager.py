@@ -9,7 +9,7 @@ class SerialManager:
         self.lock = threading.Lock()
         self.connected = False
         self.error = None
-        
+
     def connect(self):
         """Initialize serial connection"""
         try:
@@ -35,18 +35,18 @@ class SerialManager:
             self.error = str(e)
             print(f"Unexpected error: {e}")
             self.ser = None
-    
+
     def get_status(self):
         return {
             "connected": self.connected,
             "error": self.error
         }
-    
+
     def send_command(self, command):
         """Send command through serial connection"""
         if not self.connected or not self.ser or not self.ser.is_open:
             return False, "Serial port not available"
-        
+
         try:
             with self.lock:
                 self.ser.write(command.encode())
@@ -68,12 +68,12 @@ class SerialManager:
             return False, f"Serial communication error: {str(e)}"
         except Exception as e:
             return False, str(e)
-    
+
     def reconnect(self):
         """Close and reconnect serial connection"""
         self.disconnect()
         self.connect()
-    
+
     def disconnect(self):
         """Close serial connection"""
         if self.ser and self.ser.is_open:

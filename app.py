@@ -56,12 +56,12 @@ async def retry_connection():
 async def send_command(request: Request):
     data = await request.json()
     command = data.get('command')
-    
+
     if not command:
         return JSONResponse({'status': 'error', 'message': 'No command provided'}, status_code=400)
-    
+
     success, message = serial_manager.send_command(command)
-    
+
     if success:
         return JSONResponse({'status': 'success', 'command': command})
     else:
@@ -80,29 +80,33 @@ async def video_feed():
     """Stream video from Raspberry Pi camera"""
     if not camera_manager.available:
         return JSONResponse({"error": "Camera not available"}, status_code=404)
-    
-    process, stream_info = camera_manager.start_video_stream()
-    
-    if not process:
-        return JSONResponse({"error": stream_info}, status_code=500)
-    
-    if stream_info and "tcp://" in stream_info:
-        # For libcamera-vid TCP stream
-        return JSONResponse({
-            "stream_url": f"http://{request.client.host}:8000"
-        })
-    # For raspivid direct stream
+
+    frame_generator, error = camera_manager.start_video_stream()
+
+    if error:
+        return JSONResponse({"error": error}, status_code=500)
+
+    if not frame_generator:
+        return JSONResponse({"error": "Failed to start video stream"}, status_code=500)
+
     def generate():
         try:
-            while True:
-                data = process.stdout.read(1024)
-                if not data:
-                    break
-                yield data
-        finally:
-            process.terminate()
-    
-    return StreamingResponse(generate(), media_type='video/x-h264')
+            for frame in frame_generator:
+                yield b'--frame\r\n'
+                yield b'Content-Type: image/jpeg\r\n\r\n'
+                yield frame
+                yield b'\r\n'
+        except Exception as e:
+            print(f"Streaming error: {e}")
+            camera_manager.stop_video_stream()
+
+    return StreamingResponse(generate(), media_type='multipart/x-mixed-replace; boundary=frame')
+
+@app.post('/stop_video')
+async def stop_video():
+    """Stop the video stream"""
+    camera_manager.stop_video_stream()
+    return JSONResponse({"status": "success", "message": "Video stream stopped"})
 
 if __name__ == '__main__':
     serial_manager.connect()

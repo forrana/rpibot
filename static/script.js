@@ -15,20 +15,20 @@ document.addEventListener('DOMContentLoaded', function() {
     let isConnected = false;
     let isCameraAvailable = false;
     let videoStream = null;
-    
+
     // Initialize power button to OFF state
     powerBtn.textContent = 'OFF';
     powerBtn.classList.add('off');
-    
+
     // Check connection status
     checkConnectionStatus();
-    
+
     // Check camera status
     checkCameraStatus();
-    
+
     // Start camera button
     startCameraBtn.addEventListener('click', startVideoStream);
-    
+
     // Add click event listeners to all buttons
     buttons.forEach(button => {
         button.addEventListener('click', function() {
@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function() {
             sendCommand(command);
         });
     });
-    
+
     // Power button toggle
     powerBtn.addEventListener('click', function() {
         if (!isConnected) {
@@ -62,20 +62,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         isPowerOn = !isPowerOn;
     });
-    
+
     // Retry connection button
     retryBtn.addEventListener('click', function() {
         retryConnection();
     });
-    
+
     // Keyboard event listener
     document.addEventListener('keydown', function(event) {
         // Only handle key presses when focused on the document body
         if (event.target.tagName !== 'BODY') return;
-        
+
         const key = event.key.toUpperCase();
         let command = null;
-        
+
         // Map keys to commands
         switch(key) {
             case 'W': command = 'W'; break;
@@ -84,18 +84,18 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'D': command = 'D'; break;
             case 'X': command = 'X'; break;
         }
-        
+
         if (command) {
             event.preventDefault();
             if (isConnected) {
                 sendCommand(command);
-                
+
                 // Visual feedback - highlight the corresponding button
                 const button = document.querySelector(`button[data-command="${command}"]`);
                 if (button) {
                     button.style.transform = 'scale(0.95)';
                     button.style.boxShadow = '0 0 10px rgba(255, 255, 255, 0.7)';
-                    
+
                     setTimeout(() => {
                         button.style.transform = '';
                         button.style.boxShadow = '';
@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-    
+
     // Check connection status
     function checkConnectionStatus() {
         fetch('/connection_status')
@@ -124,12 +124,12 @@ document.addEventListener('DOMContentLoaded', function() {
             connectionControl.style.display = 'block';
         });
     }
-    
+
     // Retry connection
     function retryConnection() {
         statusText.textContent = 'Connecting...';
         statusElement.classList.remove('connected', 'disconnected');
-        
+
         fetch('/retry_connection', {
             method: 'POST'
         })
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
             connectionControl.style.display = 'block';
         });
     }
-    
+
     // Update connection status UI
     function updateConnectionStatus(data) {
         if (data.connected) {
@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
             connectionControl.style.display = 'block';
         }
     }
-    
+
     // Check camera status
     function checkCameraStatus() {
         fetch('/camera_status')
@@ -175,30 +175,41 @@ document.addEventListener('DOMContentLoaded', function() {
             cameraStatus.classList.add('unavailable');
         });
     }
-    
+
+    // Periodically check camera status
+    setInterval(checkCameraStatus, 5000);
+
     // Update camera status UI
     function updateCameraStatus(data) {
         cameraSection.style.display = 'block';
-        
+
         if (data.available) {
             cameraStatus.textContent = 'Camera available';
             cameraStatus.classList.add('available');
             cameraStatus.classList.remove('unavailable');
             startCameraBtn.style.display = 'block';
+            stopCameraBtn.style.display = 'none';
             cameraError.style.display = 'none';
         } else {
             cameraStatus.textContent = 'Camera not available';
             cameraStatus.classList.add('unavailable');
             cameraStatus.classList.remove('available');
             startCameraBtn.style.display = 'none';
-            
+            stopCameraBtn.style.display = 'none';
+
             if (data.error) {
                 cameraError.textContent = `Error: ${data.error}`;
                 cameraError.style.display = 'block';
             }
         }
+
+        // Update streaming status
+        if (data.streaming) {
+            startCameraBtn.style.display = 'none';
+            stopCameraBtn.style.display = 'inline-block';
+        }
     }
-    
+
     // Start video stream
     function startVideoStream() {
         if (!isCameraAvailable) {
@@ -206,37 +217,56 @@ document.addEventListener('DOMContentLoaded', function() {
             cameraError.style.display = 'block';
             return;
         }
-        
+
         cameraStatus.textContent = 'Starting camera...';
         cameraStatus.classList.remove('available', 'unavailable');
-        
-        fetch('/video_feed')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to start video stream');
-            }
-            return response.json();
+        videoContainer.style.display = 'block';
+
+        // Set up video feed
+        videoFeed.src = '/video_feed';
+
+        // Add event listener to handle stream end
+        videoFeed.onerror = function() {
+            cameraStatus.textContent = 'Camera stream ended';
+            cameraStatus.classList.add('unavailable');
+            cameraStatus.classList.remove('available');
+        };
+
+        cameraStatus.textContent = 'Camera streaming';
+        cameraStatus.classList.add('available');
+        cameraStatus.classList.remove('unavailable');
+    }
+
+    // Stop video stream
+    function stopVideoStream() {
+        fetch('/stop_video', {
+            method: 'POST'
         })
+        .then(response => response.json())
         .then(data => {
-            if (data.stream_url) {
-                // For libcamera-vid TCP stream
-                videoFeed.src = data.stream_url;
-                videoContainer.style.display = 'block';
-                cameraStatus.textContent = 'Camera streaming';
-                cameraStatus.classList.add('available');
-            } else if (data.error) {
-                throw new Error(data.error);
+            if (data.status === 'success') {
+                cameraStatus.textContent = 'Camera stopped';
+                cameraStatus.classList.remove('available', 'unavailable');
+                videoContainer.style.display = 'none';
             }
         })
         .catch(error => {
-            console.error('Error starting video stream:', error);
-            cameraStatus.textContent = 'Failed to start camera';
-            cameraStatus.classList.add('unavailable');
-            cameraError.textContent = `Error: ${error.message}`;
-            cameraError.style.display = 'block';
+            console.error('Error stopping video stream:', error);
         });
     }
-    
+
+    // Add stop button
+    const stopCameraBtn = document.createElement('button');
+    stopCameraBtn.id = 'stopCameraBtn';
+    stopCameraBtn.className = 'camera-btn';
+    stopCameraBtn.textContent = 'Stop Camera';
+    stopCameraBtn.style.display = 'none';
+    stopCameraBtn.style.marginLeft = '10px';
+
+    startCameraBtn.parentNode.insertBefore(stopCameraBtn, startCameraBtn.nextSibling);
+
+    stopCameraBtn.addEventListener('click', stopVideoStream);
+
     // Send command to server
     function sendCommand(command) {
         fetch('/send_command', {
@@ -256,7 +286,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 statusText.textContent = `Error: ${data.message}`;
                 statusElement.classList.add('disconnected');
                 statusElement.classList.remove('connected');
-                
+
                 // If connection was lost, update connection status
                 if (data.error_type === 'connection_lost') {
                     isConnected = false;

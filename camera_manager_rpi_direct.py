@@ -134,6 +134,7 @@ class CameraManagerDirect:
 
         try:
             # Start the detected camera command to capture from camera
+            # Use raw output format for piping to ffmpeg
             camera_cmd_list = [
                 self.camera_cmd,
                 '--timeout', '0',  # Continuous capture
@@ -142,22 +143,23 @@ class CameraManagerDirect:
                 '--height', '480',
                 '--framerate', '30',
                 '--nopreview',
-                '--output', '-'  # Output to stdout
+                '--output', '-',  # Output to stdout
+                '--rawfull'  # Use raw output format for piping
             ]
 
             # Start ffmpeg to convert to MJPEG and serve via UDP
             ffmpeg_cmd = [
                 'ffmpeg',
+                '-f', 'h264',  # Specify input format as H.264
                 '-i', 'pipe:',  # Input from pipe
-                '-f', 'h264',
                 '-c:v', 'copy',  # Copy the H.264 stream directly
                 '-f', 'mpegts',
                 f'udp://localhost:{self.stream_port}'
             ]
 
             # Create pipe between camera command and ffmpeg
-            camera_process = subprocess.Popen(camera_cmd_list, stdout=subprocess.PIPE)
-            self.stream_process = subprocess.Popen(ffmpeg_cmd, stdin=camera_process.stdout)
+            self.camera_process = subprocess.Popen(camera_cmd_list, stdout=subprocess.PIPE)
+            self.stream_process = subprocess.Popen(ffmpeg_cmd, stdin=self.camera_process.stdout)
 
             # Give processes time to start
             time.sleep(3)
@@ -182,11 +184,23 @@ class CameraManagerDirect:
 
         self.streaming = False
 
+        # Terminate camera process first
+        if hasattr(self, 'camera_process') and self.camera_process:
+            try:
+                os.killpg(os.getpgid(self.camera_process.pid), signal.SIGTERM)
+                self.camera_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(self.camera_process.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            finally:
+                self.camera_process = None
+
+        # Then terminate ffmpeg process
         if self.stream_process:
             try:
-                # Terminate the process group (includes both camera and ffmpeg)
                 os.killpg(os.getpgid(self.stream_process.pid), signal.SIGTERM)
-                self.stream_process.wait(timeout=5)
+                self.stream_process.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 os.killpg(os.getpgid(self.stream_process.pid), signal.SIGKILL)
             except ProcessLookupError:
@@ -199,6 +213,15 @@ class CameraManagerDirect:
     def __del__(self):
         """Cleanup on object destruction"""
         self.stop_video_stream()
+        # Additional cleanup for camera process if it exists
+        if hasattr(self, 'camera_process') and self.camera_process:
+            try:
+                os.killpg(os.getpgid(self.camera_process.pid), signal.SIGTERM)
+                self.camera_process.wait(timeout=2)
+            except:
+                pass
+            finally:
+                self.camera_process = None
 
 # Test the direct camera manager
 if __name__ == "__main__":

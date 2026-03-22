@@ -108,15 +108,20 @@ class CameraManager:
         """Start video stream using picamera2"""
         try:
             from picamera2 import Picamera2
+            import cv2
+            import numpy as np
 
             # Initialize camera
             self.camera = Picamera2()
             config = self.camera.create_video_configuration(
                 main={"format": 'XRGB8888', "size": (640, 480)},
-                controls={"FrameRate": 30}
+                controls={"FrameRate": 15}  # Reduced framerate for stability
             )
             self.camera.configure(config)
             self.camera.start()
+
+            # Give camera time to warm up
+            time.sleep(2)
 
             self.streaming = True
 
@@ -126,20 +131,21 @@ class CameraManager:
                         # Get frame from camera
                         im = self.camera.capture_array()
 
-                        # Convert to JPEG
-                        import cv2
-                        import numpy as np
-                        _, jpeg = cv2.imencode('.jpg', cv2.cvtColor(im, cv2.COLOR_RGB2BGR))
+                        # Convert to JPEG with quality control
+                        _, jpeg = cv2.imencode('.jpg', cv2.cvtColor(im, cv2.COLOR_RGB2BGR), [int(cv2.IMWRITE_JPEG_QUALITY), 80])
 
                         yield jpeg.tobytes()
+
+                        # Small delay to control frame rate
+                        time.sleep(0.05)
                     except Exception as e:
                         print(f"Frame capture error: {e}")
                         break
 
             return capture_frames(), None
 
-        except ImportError:
-            return None, "Required libraries not available (opencv-python, numpy)"
+        except ImportError as e:
+            return None, f"Required libraries not available: {str(e)}"
         except Exception as e:
             self.stop_video_stream()
             return None, f"picamera2 stream error: {str(e)}"

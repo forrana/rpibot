@@ -222,19 +222,28 @@ document.addEventListener('DOMContentLoaded', function() {
         cameraStatus.classList.remove('available', 'unavailable');
         videoContainer.style.display = 'block';
 
-        // Set up video feed
+        // Set up video feed for MJPEG stream
         videoFeed.src = '/video_feed';
+        videoFeed.autoplay = true;
+        videoFeed.controls = false;
 
-        // Add event listener to handle stream end
-        videoFeed.onerror = function() {
-            cameraStatus.textContent = 'Camera stream ended';
-            cameraStatus.classList.add('unavailable');
-            cameraStatus.classList.remove('available');
+        // Add event listeners
+        videoFeed.onloadeddata = function() {
+            cameraStatus.textContent = 'Camera streaming';
+            cameraStatus.classList.add('available');
+            cameraStatus.classList.remove('unavailable');
         };
 
-        cameraStatus.textContent = 'Camera streaming';
-        cameraStatus.classList.add('available');
-        cameraStatus.classList.remove('unavailable');
+        videoFeed.onerror = function() {
+            cameraStatus.textContent = 'Camera stream error';
+            cameraStatus.classList.add('unavailable');
+            cameraStatus.classList.remove('available');
+            cameraError.textContent = 'Failed to load video stream';
+            cameraError.style.display = 'block';
+        };
+
+        // Force reload if needed
+        videoFeed.load();
     }
 
     // Stop video stream

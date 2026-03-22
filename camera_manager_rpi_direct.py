@@ -81,7 +81,7 @@ class CameraManagerDirect:
             # Test camera with the detected command
             try:
                 # Use a temporary file instead of /dev/null to avoid format issues
-                test_cmd = [camera_cmd, '--timeout', '1000',
+                test_cmd = [camera_cmd, '-t', '1000',
                            '--nopreview', '--codec', 'h264',
                            '--width', '640', '--height', '480',
                            '--framerate', '30', '-o', 'test.h264']
@@ -134,17 +134,16 @@ class CameraManagerDirect:
 
         try:
             # Start the detected camera command to capture from camera
-            # Use raw output format for piping to ffmpeg
+            # Use -t 0 for continuous capture and output to stdout
             camera_cmd_list = [
                 self.camera_cmd,
-                '--timeout', '0',  # Continuous capture
+                '-t', '0',  # Continuous capture
                 '--codec', 'h264',
                 '--width', '640',
                 '--height', '480',
                 '--framerate', '30',
                 '--nopreview',
-                '--output', '-',  # Output to stdout
-                '--rawfull'  # Use raw output format for piping
+                '-o', '-'  # Output to stdout
             ]
 
             # Start ffmpeg to convert to MJPEG and serve via UDP
@@ -152,8 +151,11 @@ class CameraManagerDirect:
                 'ffmpeg',
                 '-f', 'h264',  # Specify input format as H.264
                 '-i', 'pipe:',  # Input from pipe
+                '-analyzeduration', '1000000',  # Increase analysis duration
+                '-probesize', '1000000',  # Increase probe size
                 '-c:v', 'copy',  # Copy the H.264 stream directly
                 '-f', 'mpegts',
+                '-mpegts_service_type', 'digital_tv',
                 f'udp://localhost:{self.stream_port}'
             ]
 
@@ -165,7 +167,7 @@ class CameraManagerDirect:
             time.sleep(3)
 
             # Check if processes are still running
-            if libcamera_process.poll() is not None or self.stream_process.poll() is not None:
+            if self.camera_process.poll() is not None or self.stream_process.poll() is not None:
                 error = "Stream processes failed to start"
                 self.stop_video_stream()
                 return None, error

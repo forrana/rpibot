@@ -19,6 +19,7 @@ class CameraManagerDirect:
         self.stream_process = None
         self.streaming = False
         self.stream_port = 8000
+        self.camera_cmd = None  # Will be set in check_camera()
         self.check_camera()
 
     def check_camera(self):
@@ -61,6 +62,9 @@ class CameraManagerDirect:
                 self.error = "No compatible camera command found (tried rpicam-vid and libcamera-vid)"
                 print("No compatible camera command found")
                 return
+
+            # Store the detected camera command for later use
+            self.camera_cmd = camera_cmd
 
             # Check if ffmpeg is available
             try:
@@ -131,7 +135,7 @@ class CameraManagerDirect:
         try:
             # Start the detected camera command to capture from camera
             camera_cmd_list = [
-                camera_cmd,
+                self.camera_cmd,
                 '--timeout', '0',  # Continuous capture
                 '--codec', 'h264',
                 '--width', '640',

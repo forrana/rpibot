@@ -220,6 +220,10 @@ class CameraManager:
             # Try each target with more robust error handling
             for target in targets_to_try:
                 try:
+                    # Clean up between attempts to prevent camera lockup
+                    self._cleanup_camera_processes()
+                    time.sleep(0.5)  # Give time for cleanup to complete
+
                     if target:
                         os.environ['LIBCAMERA_RPI_TARGET'] = target
                         self.logger.info(f"Trying picamera2 with {target} target")
@@ -242,6 +246,11 @@ class CameraManager:
                         return True
                     except Exception as preview_error:
                         self.logger.info(f"Preview configuration failed: {preview_error}")
+                        # Clean up before trying next config
+                        try:
+                            test_camera.close()
+                        except:
+                            pass
 
                     # Fall back to video configuration
                     try:
@@ -255,6 +264,11 @@ class CameraManager:
                         return True
                     except Exception as video_error:
                         self.logger.info(f"Video configuration failed: {video_error}")
+                        # Clean up before continuing
+                        try:
+                            test_camera.close()
+                        except:
+                            pass
                         if target:
                             os.environ.pop('LIBCAMERA_RPI_TARGET', None)
                         continue
@@ -363,15 +377,25 @@ class CameraManager:
         """
         try:
             self.logger.info("Cleaning up existing camera processes...")
-            subprocess.run(['pkill', '-f', 'libcamera'],
+
+            # More aggressive cleanup for libcamera issues
+            subprocess.run(['pkill', '-9', '-f', 'libcamera'],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(['pkill', '-f', 'rpicam'],
+            subprocess.run(['pkill', '-9', '-f', 'rpicam'],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(['pkill', '-f', 'picamera2'],
+            subprocess.run(['pkill', '-9', '-f', 'picamera2'],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(['pkill', '-f', 'ffmpeg'],
+            subprocess.run(['pkill', '-9', '-f', 'ffmpeg'],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(0.5)  # Give processes time to terminate
+
+            # Also try to reset the camera system
+            try:
+                subprocess.run(['sudo', 'systemctl', 'restart', 'libcamera'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except:
+                pass
+
+            time.sleep(1.0)  # Give more time for processes to terminate
             self.logger.info("Camera process cleanup completed")
         except Exception as e:
             self.logger.warning(f"Camera process cleanup warning: {e}")
@@ -580,6 +604,10 @@ class CameraManager:
 
             for target in targets_to_try:
                 try:
+                    # Clean up between attempts to prevent camera lockup
+                    self._cleanup_camera_processes()
+                    time.sleep(0.5)  # Give time for cleanup to complete
+
                     if target:
                         os.environ['LIBCAMERA_RPI_TARGET'] = target
                         self.logger.info(f"Trying picamera2 with {target} target")
@@ -601,9 +629,18 @@ class CameraManager:
                         return True
                     except Exception as preview_error:
                         self.logger.info(f"Preview configuration failed: {preview_error}")
+                        # Clean up the camera object before trying next config
+                        try:
+                            if hasattr(self.camera, 'close'):
+                                self.camera.close()
+                        except:
+                            pass
+                        self.camera = None
 
                     # Fall back to video configuration
                     try:
+                        if not self.camera:
+                            self.camera = Picamera2()
                         config = self.camera.create_video_configuration(
                             main={"format": 'XRGB8888', "size": (640, 480)},
                             controls={"FrameRate": 30.0}
@@ -614,6 +651,13 @@ class CameraManager:
                         return True
                     except Exception as video_error:
                         self.logger.info(f"Video configuration failed: {video_error}")
+                        # Clean up before continuing
+                        try:
+                            if self.camera and hasattr(self.camera, 'close'):
+                                self.camera.close()
+                        except:
+                            pass
+                        self.camera = None
                         if target:
                             os.environ.pop('LIBCAMERA_RPI_TARGET', None)
                         continue

@@ -209,42 +209,60 @@ class CameraManager:
             self._cleanup_camera_processes()
 
             # Try different targets based on Raspberry Pi model
+            # For Raspberry Pi 5, we need to handle the target mismatch issue
             targets_to_try = []
             if self.rpi_model == 'pi5':
-                targets_to_try = ['bcm2835', 'pisp']
+                # Raspberry Pi 5 has specific target requirements - try auto-detection first
+                targets_to_try = [None, 'bcm2835', 'pisp']
             else:
-                targets_to_try = ['pisp', 'bcm2835']
+                targets_to_try = [None, 'pisp', 'bcm2835']
 
-            # First try without setting any target
-            try:
-                os.environ.pop('LIBCAMERA_RPI_TARGET', None)
-                test_camera = Picamera2()
-                config = test_camera.create_video_configuration()
-                test_camera.configure(config)
-                test_camera.start()
-                time.sleep(0.1)  # Let it run briefly
-                test_camera.stop()
-                test_camera.close()
-                self.logger.info("picamera2 test successful with default target")
-                return True
-            except Exception as e:
-                self.logger.info(f"picamera2 default target test failed: {e}")
-
-            # Try specific targets
+            # Try each target with more robust error handling
             for target in targets_to_try:
                 try:
-                    os.environ['LIBCAMERA_RPI_TARGET'] = target
+                    if target:
+                        os.environ['LIBCAMERA_RPI_TARGET'] = target
+                        self.logger.info(f"Trying picamera2 with {target} target")
+                    else:
+                        os.environ.pop('LIBCAMERA_RPI_TARGET', None)
+                        self.logger.info("Trying picamera2 with auto-detected target")
+
+                    # Create camera and test with simpler configuration
                     test_camera = Picamera2()
-                    config = test_camera.create_video_configuration()
-                    test_camera.configure(config)
-                    test_camera.start()
-                    time.sleep(0.1)  # Let it run briefly
-                    test_camera.stop()
-                    test_camera.close()
-                    self.logger.info(f"picamera2 test successful with {target} target")
-                    return True
+
+                    # Try preview configuration first (more likely to work)
+                    try:
+                        config = test_camera.create_preview_configuration()
+                        test_camera.configure(config)
+                        test_camera.start()
+                        time.sleep(0.1)  # Let it run briefly
+                        test_camera.stop()
+                        test_camera.close()
+                        self.logger.info(f"picamera2 test successful with {target or 'auto-detected'} target (preview config)")
+                        return True
+                    except Exception as preview_error:
+                        self.logger.info(f"Preview configuration failed: {preview_error}")
+
+                    # Fall back to video configuration
+                    try:
+                        config = test_camera.create_video_configuration()
+                        test_camera.configure(config)
+                        test_camera.start()
+                        time.sleep(0.1)  # Let it run briefly
+                        test_camera.stop()
+                        test_camera.close()
+                        self.logger.info(f"picamera2 test successful with {target or 'auto-detected'} target (video config)")
+                        return True
+                    except Exception as video_error:
+                        self.logger.info(f"Video configuration failed: {video_error}")
+                        if target:
+                            os.environ.pop('LIBCAMERA_RPI_TARGET', None)
+                        continue
+
                 except Exception as target_error:
-                    self.logger.info(f"picamera2 {target} target test failed: {target_error}")
+                    self.logger.info(f"picamera2 {target or 'auto-detected'} target test failed: {target_error}")
+                    if target:
+                        os.environ.pop('LIBCAMERA_RPI_TARGET', None)
                     continue
 
             return False
@@ -567,21 +585,41 @@ class CameraManager:
                         self.logger.info(f"Trying picamera2 with {target} target")
                     else:
                         os.environ.pop('LIBCAMERA_RPI_TARGET', None)
-                        self.logger.info("Trying picamera2 with default target")
+                        self.logger.info("Trying picamera2 with auto-detected target")
 
                     self.camera = Picamera2()
-                    config = self.camera.create_video_configuration(
-                        main={"format": 'XRGB8888', "size": (640, 480)},
-                        controls={"FrameRate": 30.0}
-                    )
-                    self.camera.configure(config)
-                    self.camera.start()
 
-                    self.logger.info(f"picamera2 setup successful with target: {target or 'default'}")
-                    return True
+                    # Try preview configuration first (more likely to work)
+                    try:
+                        config = self.camera.create_preview_configuration(
+                            main={"format": 'XRGB8888', "size": (640, 480)},
+                            controls={"FrameRate": 30.0}
+                        )
+                        self.camera.configure(config)
+                        self.camera.start()
+                        self.logger.info(f"picamera2 setup successful with {target or 'auto-detected'} target (preview config)")
+                        return True
+                    except Exception as preview_error:
+                        self.logger.info(f"Preview configuration failed: {preview_error}")
+
+                    # Fall back to video configuration
+                    try:
+                        config = self.camera.create_video_configuration(
+                            main={"format": 'XRGB8888', "size": (640, 480)},
+                            controls={"FrameRate": 30.0}
+                        )
+                        self.camera.configure(config)
+                        self.camera.start()
+                        self.logger.info(f"picamera2 setup successful with {target or 'auto-detected'} target (video config)")
+                        return True
+                    except Exception as video_error:
+                        self.logger.info(f"Video configuration failed: {video_error}")
+                        if target:
+                            os.environ.pop('LIBCAMERA_RPI_TARGET', None)
+                        continue
 
                 except Exception as target_error:
-                    self.logger.info(f"picamera2 setup failed with target {target}: {target_error}")
+                    self.logger.info(f"picamera2 setup failed with target {target or 'auto-detected'}: {target_error}")
                     if target:
                         os.environ.pop('LIBCAMERA_RPI_TARGET', None)
                     continue

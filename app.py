@@ -29,34 +29,14 @@ templates = Jinja2Templates(directory="templates")
 # Initialize managers
 serial_manager = SerialManager()
 
-# Try the simple picamera2 manager first (no ffmpeg dependency)
-try:
-    from camera_manager_simple import CameraManagerSimple
-    camera_manager = CameraManagerSimple()
-    print("Using simple picamera2 camera manager")
+# Use the new unified camera manager
+from camera_manager import CameraManager
+camera_manager = CameraManager()
 
-    # If simple manager fails, fall back to direct manager
-    if not camera_manager.available:
-        print("Simple camera manager failed, trying direct manager...")
-        try:
-            from camera_manager_rpi_direct import CameraManagerDirect
-            camera_manager = CameraManagerDirect()
-            print("Using direct Raspberry Pi camera manager")
-        except ImportError:
-            print("Direct camera manager not available, trying regular manager...")
-            from camera_manager import CameraManager
-            camera_manager = CameraManager()
-
-except ImportError:
-    print("Simple camera manager not available, trying direct manager...")
-    try:
-        from camera_manager_rpi_direct import CameraManagerDirect
-        camera_manager = CameraManagerDirect()
-        print("Using direct Raspberry Pi camera manager")
-    except ImportError:
-        print("Direct camera manager not available, using regular manager")
-        from camera_manager import CameraManager
-        camera_manager = CameraManager()
+if camera_manager.available:
+    print(f"Camera available using method: {camera_manager.current_method}")
+else:
+    print(f"Camera not available: {camera_manager.error}")
 
 @app.get('/', response_class=HTMLResponse)
 async def index(request: Request):

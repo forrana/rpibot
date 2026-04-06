@@ -42,7 +42,7 @@ body {
     margin: 2rem 0;
 }
 
-.middle-row {
+.row {
     display: grid;
     grid-template-columns: 80px 80px 80px;
     gap: 10px;

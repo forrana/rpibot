@@ -192,14 +192,14 @@ void backward() {
   setMotorState(BackLeft, Reverse);
 }
 
-void left() {
+void right() {
   setMotorState(FrontLeft, Forward);
   setMotorState(BackLeft, Reverse);
   setMotorState(FrontRight, Reverse);
   setMotorState(BackRight, Forward);
 }
 
-void right() {
+void left() {
   setMotorState(FrontLeft, Reverse);
   setMotorState(BackLeft, Forward);
   setMotorState(FrontRight, Forward);
